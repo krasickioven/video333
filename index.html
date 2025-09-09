@@ -1,0 +1,1690 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Master Studio</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 4px;
+            transition: all 0.3s ease;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        }
+        
+        /* Firefox */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #6366f1 rgba(0, 0, 0, 0.05);
+        }
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: #fafbfc;
+            color: #0f172a;
+            height: 100vh;
+            overflow: hidden;
+            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        }
+        
+        /* === MAIN LAYOUT === */
+        .video-studio {
+            display: grid;
+            grid-template-areas: 
+                "header header header"
+                "sidebar teleprompter controls"
+                "sidebar teleprompter controls";
+            grid-template-columns: 340px 1fr 350px;
+            grid-template-rows: auto 1fr;
+            height: 100vh;
+            gap: 0;
+        }
+
+        /* === HEADER === */
+        .studio-header {
+            grid-area: header;
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 100;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .studio-header.recording {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border-bottom: 1px solid #b91c1c;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+        }
+
+        .studio-header.recording .logo-text {
+            color: white;
+            background: none;
+            -webkit-text-fill-color: white;
+        }
+
+        .studio-header::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+        }
+
+        .studio-header.recording::before {
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.1));
+        }
+
+        .studio-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .studio-header.recording .logo-icon {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .logo-text {
+            font-size: 18px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            transition: all 0.3s ease;
+        }
+
+        .recording-status {
+            font-size: 18px;
+            font-weight: 800;
+            color: white;
+            letter-spacing: 1px;
+            animation: recording-pulse 1.5s infinite;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .header-spacer {
+            width: 120px; /* Примерно такая же ширина как logo */
+        }
+
+        @keyframes recording-pulse {
+            0%, 100% { 
+                opacity: 1; 
+                transform: scale(1);
+            }
+            50% { 
+                opacity: 0.8; 
+                transform: scale(1.05);
+            }
+        }
+
+
+
+        /* === SIDEBAR === */
+        .studio-sidebar {
+            grid-area: sidebar;
+            background: #ffffff;
+            border-right: 1px solid #e2e8f0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .studio-sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 1px;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+        }
+
+        .sidebar-section {
+            padding: 24px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .sidebar-section:last-child {
+            border-bottom: none;
+            flex: 1;
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #64748b;
+            margin-bottom: 16px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 16px;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: transparent;
+            color: #64748b;
+        }
+
+        .nav-tab.active {
+            background: #6366f1;
+            color: white;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+
+        /* OBS Connection */
+        .obs-connection {
+            background: #ffffff;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            padding: 20px;
+            position: relative;
+            margin-bottom: 16px;
+        }
+
+        .obs-connection::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            border-radius: 16px 16px 0 0;
+        }
+
+        .obs-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .obs-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ef4444;
+            position: relative;
+        }
+
+        .obs-indicator::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            border-radius: 50%;
+            background: inherit;
+            opacity: 0.3;
+            animation: pulse 2s infinite;
+        }
+
+        .obs-indicator.connected {
+            background: #22c55e;
+        }
+
+        .obs-status-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 13px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: #f9fafb;
+            font-weight: 500;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #6366f1;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(34, 197, 94, 0.3);
+        }
+
+        .btn-success:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+        }
+
+        .btn-warning:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(245, 158, 11, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        .btn-large {
+            padding: 16px 24px;
+            font-size: 15px;
+            border-radius: 14px;
+            font-weight: 700;
+        }
+
+        .btn-full {
+            width: 100%;
+        }
+
+        /* === TELEPROMPTER === */
+        .studio-teleprompter {
+            grid-area: teleprompter;
+            background: #000000;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .teleprompter-toolbar {
+            background: rgba(0, 0, 0, 0.9);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            backdrop-filter: blur(10px);
+        }
+
+        .teleprompter-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .block-counter {
+            background: #6366f1;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 13px;
+        }
+
+        .teleprompter-progress {
+            flex: 1;
+            max-width: 200px;
+            margin: 0 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #22c55e);
+            transition: width 0.5s ease;
+            border-radius: 3px;
+        }
+
+        .teleprompter-content {
+            flex: 1;
+            padding: 80px;
+            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .current-text {
+            color: white;
+            font-size: 36px;
+            line-height: 1.6;
+            font-weight: 600;
+            text-align: center;
+            max-width: 900px;
+            letter-spacing: 0.5px;
+        }
+
+        .current-text.recording {
+            animation: recording-glow 2s infinite;
+        }
+
+        @keyframes recording-glow {
+            0%, 100% { text-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
+            50% { text-shadow: 0 0 30px rgba(239, 68, 68, 0.6); }
+        }
+
+        /* === CONTROLS === */
+        .studio-controls {
+            grid-area: controls;
+            background: #ffffff;
+            border-left: 1px solid #e2e8f0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .studio-controls::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1px;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+        }
+
+        .control-section {
+            padding: 24px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .control-section:last-child {
+            border-bottom: none;
+        }
+
+        .control-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #64748b;
+            margin-bottom: 16px;
+        }
+
+        /* Status Display */
+        .status-display {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-display::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #22c55e, #16a34a);
+        }
+
+        .status-display.ready::before {
+            background: linear-gradient(90deg, #22c55e, #16a34a);
+        }
+
+        .status-display.recording::before {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+            animation: recording-glow-bar 1.5s infinite;
+        }
+
+        .status-display.waiting::before {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+
+        @keyframes recording-glow-bar {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .status-text {
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            color: #1f2937;
+        }
+
+        .status-description {
+            font-size: 13px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .stat-item {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            border: 1px solid #e5e7eb;
+            transition: all 0.2s ease;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 800;
+            color: #6366f1;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        /* Text blocks list */
+        .blocks-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .text-block {
+            padding: 16px;
+            margin-bottom: 8px;
+            background: #f8fafc;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .text-block.current {
+            border-color: #6366f1;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+            transform: scale(1.02);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+        }
+
+        .text-block.completed {
+            border-color: #22c55e;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.05) 100%);
+            opacity: 0.8;
+        }
+
+        .text-block.recording {
+            border-color: #ef4444;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.05) 100%);
+            animation: block-pulse 2s infinite;
+        }
+
+        @keyframes block-pulse {
+            0%, 100% { box-shadow: 0 4px 20px rgba(239, 68, 68, 0.2); }
+            50% { box-shadow: 0 8px 30px rgba(239, 68, 68, 0.4); }
+        }
+
+        .block-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .block-title {
+            font-weight: 700;
+            font-size: 12px;
+            color: #374151;
+        }
+
+        .block-status {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .block-text {
+            color: #4b5563;
+            font-weight: 500;
+        }
+
+        /* Video Library */
+        .video-library {
+            padding: 0;
+        }
+
+        .video-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: #ffffff;
+            border-radius: 10px;
+            margin-bottom: 6px;
+            border: 1px solid #e5e7eb;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .video-item:hover {
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transform: translateY(-2px);
+            border-color: #6366f1;
+        }
+
+        .video-thumbnail {
+            width: 40px;
+            height: 30px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .video-info {
+            flex: 1;
+        }
+
+        .video-name {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 2px;
+            color: #1f2937;
+        }
+
+        .video-date {
+            font-size: 10px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .video-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .btn-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f3f4f6;
+            border: none;
+            color: #6b7280;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 10px;
+        }
+
+        .btn-icon:hover {
+            background: #e5e7eb;
+            color: #374151;
+            transform: scale(1.05);
+        }
+
+        /* Text Area */
+        .text-area {
+            width: 100%;
+            min-height: 120px;
+            padding: 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: vertical;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            background: #f9fafb;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+        }
+
+        .text-area:focus {
+            outline: none;
+            border-color: #6366f1;
+            background: #ffffff;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        /* Debug Panel */
+        .debug-panel {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 16px;
+            border-radius: 12px;
+            font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+
+        .debug-panel strong {
+            color: #60a5fa;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6b7280;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .empty-state-text {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        /* Hidden classes */
+        .hidden { 
+            display: none !important; 
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .video-studio {
+                grid-template-columns: 300px 1fr 320px;
+            }
+            
+            .current-text {
+                font-size: 28px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .video-studio {
+                grid-template-areas: 
+                    "header"
+                    "teleprompter"
+                    "controls";
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto;
+            }
+            
+            .studio-sidebar {
+                display: none;
+            }
+            
+            .studio-controls {
+                max-height: 300px;
+            }
+            
+            .teleprompter-content {
+                padding: 40px 20px;
+            }
+            
+            .current-text {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="video-studio">
+        <!-- Header -->
+        <header class="studio-header" id="studioHeader">
+            <div class="studio-logo">
+                <div class="logo-icon">🎬</div>
+                <div class="logo-text">Video Master</div>
+            </div>
+            
+            <div class="recording-status hidden" id="recordingStatus">
+                🔴 ИДЕТ ЗАПИСЬ
+            </div>
+            
+            <div class="header-spacer"></div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="studio-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">OBS Studio</div>
+                <div class="obs-connection">
+                    <div class="obs-status">
+                        <div class="obs-indicator" id="obsIndicator"></div>
+                        <span class="obs-status-text" id="obsStatusText">Не подключен</span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="obsAddress">Адрес сервера</label>
+                        <input type="text" id="obsAddress" class="form-input" value="ws://localhost:4455">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="obsPassword">Пароль</label>
+                        <input type="password" id="obsPassword" class="form-input" placeholder="Пароль (опционально)">
+                    </div>
+                    
+                    <button class="btn btn-primary btn-full" onclick="connectOBS()">
+                        Подключиться к OBS
+                    </button>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Текст для записи</div>
+                <div class="form-group">
+                    <textarea 
+                        id="textInput" 
+                        class="text-area" 
+                        placeholder="Введите текст для записи. Он будет автоматически разбит на удобные блоки для чтения."
+                    >Привет! Меня зовут Андрей, я разработчик и тестирую новый инструмент для записи видео. Этот уникальный сервис позволяет разбивать текст на оптимальные блоки для удобного чтения с экрана. Каждый блок записывается отдельно, что исключает необходимость монтажа и позволяет создавать качественные видео с первого дубля. Система автоматически анализирует текст и создает блоки оптимального размера. В конце все блоки склеиваются в одно профессиональное видео. Это революционный подход к созданию видеоконтента!</textarea>
+                </div>
+                <button class="btn btn-primary btn-full" onclick="loadText()">
+                    📋 Подготовить блоки
+                </button>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Недавние записи</div>
+                <div class="video-library" id="videoLibrary">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📹</div>
+                        <div class="empty-state-text">Записи появятся здесь</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Teleprompter -->
+        <main class="studio-teleprompter">
+            <div class="teleprompter-toolbar">
+                <div class="teleprompter-info">
+                    <div class="block-counter" id="blockCounter">Блок 0 из 0</div>
+                    <div class="teleprompter-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div id="progressValue">0%</div>
+                </div>
+                <button class="btn btn-primary">
+                    🖥️ Полный экран
+                </button>
+            </div>
+            
+            <div class="teleprompter-content">
+                <div class="current-text" id="currentText">
+                    Добро пожаловать в Video Master!<br><br>
+                    Подключитесь к OBS Studio и загрузите текст для начала записи профессионального видео.
+                </div>
+            </div>
+        </main>
+
+        <!-- Controls -->
+        <aside class="studio-controls">
+            <div class="control-section">
+                <div class="control-title">Статус записи</div>
+                <div class="status-display ready" id="statusCard">
+                    <div class="status-text" id="statusText">Готов к работе</div>
+                    <div class="status-description">Подключитесь к OBS и загрузите текст для начала записи</div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-title">Управление записью</div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <button id="recordBtn" class="btn btn-danger btn-large btn-full" onclick="recordBlock()" disabled>
+                        🔴 Записать блок
+                    </button>
+                    <button id="nextBtn" class="btn btn-primary btn-large btn-full" onclick="nextBlock()" disabled>
+                        ➡️ Следующий блок
+                    </button>
+                    <button id="finishBtn" class="btn btn-warning btn-large btn-full" onclick="finishProject()" disabled>
+                        🎬 Закончить и сохранить видео
+                    </button>
+                    <div style="font-size: 11px; color: #64748b; text-align: center; margin-top: 8px;">
+                        <strong>Горячие клавиши:</strong><br>
+                        Z - Запись/Остановка/Перезапись<br>
+                        X - Принять и далее
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-title">Прогресс</div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="currentBlock">0</div>
+                        <div class="stat-label">Текущий</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="totalBlocks">0</div>
+                        <div class="stat-label">Всего</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="recordedBlocks">0</div>
+                        <div class="stat-label">Записано</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="completedBlocks">0</div>
+                        <div class="stat-label">Принято</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-title">Блоки записи</div>
+                <div class="blocks-list" id="blocksList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <div class="empty-state-text">Блоки появятся после подготовки текста</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <div class="control-title">Отладочная информация</div>
+                <div class="debug-panel" id="debug">
+                    🔧 Состояние: Инициализация системы...
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // Состояние приложения
+        let STATE = {
+            socket: null,
+            obsConnected: false,
+            blocks: [],
+            currentIndex: 0,
+            acceptedBlocks: [],
+            isRecording: false,
+            waitingForOBS: false,
+            lastFile: null
+        };
+
+        // Флаг для предотвращения лишних обновлений
+        let lastRenderedState = '';
+
+        // Умная функция деления текста на блоки
+        function smartTextSplit(text) {
+            const sentences = text.split(/[.!?]+/).filter(s => s.trim());
+            const blocks = [];
+            let currentBlock = '';
+            let currentWordCount = 0;
+            const minWords = 15; // Минимум слов в блоке
+            const maxWords = 45; // Максимум слов в блоке
+            const targetWords = 30; // Оптимальное количество слов
+            
+            for (let i = 0; i < sentences.length; i++) {
+                const sentence = sentences[i].trim() + '.';
+                const sentenceWords = sentence.split(/\s+/).length;
+                
+                // Если текущий блок пустой, добавляем предложение
+                if (currentWordCount === 0) {
+                    currentBlock = sentence;
+                    currentWordCount = sentenceWords;
+                } 
+                // Если добавление предложения не превысит максимум
+                else if (currentWordCount + sentenceWords <= maxWords) {
+                    currentBlock += ' ' + sentence;
+                    currentWordCount += sentenceWords;
+                } 
+                // Если текущий блок достаточно большой, завершаем его
+                else if (currentWordCount >= minWords) {
+                    blocks.push(currentBlock);
+                    currentBlock = sentence;
+                    currentWordCount = sentenceWords;
+                } 
+                // Иначе добавляем к текущему блоку, даже если превышаем максимум
+                else {
+                    currentBlock += ' ' + sentence;
+                    currentWordCount += sentenceWords;
+                }
+                
+                // Если достигли оптимального размера и это не последнее предложение
+                if (currentWordCount >= targetWords && i < sentences.length - 1) {
+                    blocks.push(currentBlock);
+                    currentBlock = '';
+                    currentWordCount = 0;
+                }
+            }
+            
+            // Добавляем последний блок, если он не пустой
+            if (currentBlock.trim()) {
+                blocks.push(currentBlock);
+            }
+            
+            return blocks;
+        }
+
+        // Подключение к серверу
+        function connectToServer() {
+            STATE.socket = new WebSocket('ws://localhost:3001');
+            
+            STATE.socket.onopen = () => {
+                updateStatus('Подключен к серверу', 'ready');
+            };
+            
+            STATE.socket.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleServerMessage(msg);
+            };
+            
+            STATE.socket.onclose = () => {
+                updateStatus('Переподключение...', 'waiting');
+                setTimeout(connectToServer, 2000);
+            };
+        }
+
+        function handleServerMessage(msg) {
+            console.log('📨 Получено:', msg.type, msg.data);
+            
+            switch(msg.type) {
+                case 'obs_status':
+                    STATE.obsConnected = msg.data.connected;
+                    updateOBSStatus();
+                    updateUI();
+                    if (STATE.obsConnected) {
+                        updateStatus('✅ OBS подключен - готов к записи!', 'ready');
+                    } else {
+                        updateStatus('❌ OBS не подключен', 'ready');
+                    }
+                    break;
+                    
+                case 'recording_started':
+                    console.log('▶️ Запись начата:', msg.data.filename);
+                    STATE.waitingForOBS = false;
+                    updateUI();
+                    showRecordingIndicator(true);
+                    break;
+                    
+                case 'recording_stopped':
+                    console.log('⏹️ Запись остановлена:', msg.data.filename);
+                    STATE.lastFile = msg.data.filename;
+                    STATE.waitingForOBS = false;
+                    
+                    updateStatus(`✅ Блок записан: ${msg.data.filename}. Z - перезапись, X - далее`, 'waiting');
+                    updateUI();
+                    addToVideoLibrary(msg.data.filename, {
+                        size: msg.data.outputBytes ? `${(msg.data.outputBytes / 1024 / 1024).toFixed(1)} MB` : 'Неизвестно',
+                        duration: msg.data.outputTimecode || 'Неизвестно',
+                        fullPath: msg.data.fullPath
+                    });
+                    showRecordingIndicator(false);
+                    break;
+                    
+                case 'video_merged':
+                    console.log('🎉 Видео создано:', msg.data.outputFile);
+                    updateStatus('🎉 Видео готово! Проверьте папку.', 'ready');
+                    
+                    // Добавляем итоговое видео в библиотеку
+                    const outputFileName = msg.data.outputFile.split('/').pop() || msg.data.outputFile.split('\\').pop();
+                    addToVideoLibrary(outputFileName, {
+                        size: msg.data.fileSize ? `${(msg.data.fileSize / 1024 / 1024).toFixed(1)} MB` : 'Неизвестно',
+                        fullPath: msg.data.outputFile,
+                        type: 'merged'
+                    });
+                    
+                    // Полный сброс состояния проекта
+                    STATE.currentIndex = 0;
+                    STATE.acceptedBlocks = [];
+                    STATE.lastFile = null;
+                    STATE.waitingForOBS = false;
+                    STATE.isRecording = false;
+                    showRecordingIndicator(false);
+                    
+                    renderBlocks();
+                    updateUI();
+                    break;
+                    
+                case 'video_list':
+                    console.log('📋 Получен список видео:', msg.data);
+                    if (msg.data && msg.data.videos) {
+                        // Обновляем библиотеку данными с сервера
+                        msg.data.videos.forEach(videoInfo => {
+                            addToVideoLibrary(videoInfo.name, {
+                                size: videoInfo.size,
+                                date: videoInfo.date,
+                                fullPath: videoInfo.fullPath
+                            });
+                        });
+                    }
+                    break;
+                    
+                case 'error':
+                    console.error('❌ Ошибка сервера:', msg.message);
+                    // Принудительно сбрасываем все состояния при ошибке
+                    STATE.waitingForOBS = false;
+                    STATE.isRecording = false;
+                    updateStatus('❌ Ошибка: ' + (msg.message || 'Неизвестная ошибка'), 'ready');
+                    showRecordingIndicator(false);
+                    updateUI();
+                    break;
+            }
+        }
+
+        function sendMessage(type, data = {}) {
+            if (STATE.socket?.readyState === WebSocket.OPEN) {
+                STATE.socket.send(JSON.stringify({type, data}));
+            }
+        }
+
+        // OBS подключение
+        function connectOBS() {
+            const address = document.getElementById('obsAddress').value;
+            const password = document.getElementById('obsPassword').value;
+            sendMessage('connect_obs', {address, password});
+        }
+
+        function updateOBSStatus() {
+            const indicator = document.getElementById('obsIndicator');
+            const text = document.getElementById('obsStatusText');
+            
+            if (STATE.obsConnected) {
+                indicator.classList.add('connected');
+                text.textContent = 'Подключен';
+            } else {
+                indicator.classList.remove('connected');
+                text.textContent = 'Не подключен';
+            }
+        }
+
+        // Загрузка текста
+        function loadText() {
+            const text = document.getElementById('textInput').value.trim();
+            if (!text) return;
+            
+            STATE.blocks = smartTextSplit(text);
+            STATE.currentIndex = 0;
+            STATE.acceptedBlocks = [];
+            STATE.lastFile = null;
+            
+            renderBlocks();
+            updateTeleprompter();
+            updateUI();
+            updateStatus(`Готов к записи: ${STATE.blocks.length} блоков`, 'ready');
+        }
+
+        // НОВАЯ ЛОГИКА ЗАПИСИ (2 кнопки) с исправлениями
+        function recordBlock() {
+            if (STATE.waitingForOBS) {
+                console.log('⏳ Операция уже выполняется, игнорируем...');
+                return;
+            }
+            
+            // Если блок уже записан (есть lastFile), то это перезапись
+            if (STATE.lastFile && !STATE.isRecording) {
+                console.log('🔄 Перезаписываем блок...');
+                STATE.lastFile = null; // Сбрасываем предыдущий результат
+            }
+            
+            if (STATE.isRecording) {
+                console.log('🛑 Останавливаем запись...');
+                
+                STATE.isRecording = false;
+                STATE.waitingForOBS = true;
+                
+                // Таймаут для автосброса состояния
+                setTimeout(() => {
+                    if (STATE.waitingForOBS) {
+                        console.log('⚠️ Таймаут операции, сбрасываем состояние');
+                        STATE.waitingForOBS = false;
+                        updateStatus('⚠️ Таймаут операции, попробуйте еще раз', 'ready');
+                        updateUI();
+                    }
+                }, 10000);
+                
+                sendMessage('stop_recording');
+                updateStatus('⏳ Остановка записи...', 'waiting');
+                
+            } else {
+                console.log('🎬 Начинаем запись...');
+                
+                // Автоматический старт сессии при первой записи
+                if (STATE.currentIndex === 0 && STATE.acceptedBlocks.length === 0) {
+                    console.log('🚀 Автоматический старт сессии');
+                }
+                
+                STATE.isRecording = true;
+                STATE.lastFile = null;
+                STATE.waitingForOBS = true;
+                
+                // Таймаут для автосброса состояния
+                setTimeout(() => {
+                    if (STATE.waitingForOBS && STATE.isRecording) {
+                        console.log('⚠️ Таймаут операции, сбрасываем состояние');
+                        STATE.waitingForOBS = false;
+                        STATE.isRecording = false;
+                        updateStatus('⚠️ Таймаут операции, попробуйте еще раз', 'ready');
+                        showRecordingIndicator(false);
+                        updateUI();
+                    }
+                }, 10000);
+                
+                sendMessage('start_recording', {
+                    blockIndex: STATE.currentIndex,
+                    blockText: STATE.blocks[STATE.currentIndex]
+                });
+                
+                updateStatus(`🔴 Запись блока ${STATE.currentIndex + 1}...`, 'recording');
+            }
+            
+            updateTeleprompter();
+            renderBlocks();
+            updateUI();
+        }
+
+        // НОВАЯ ФУНКЦИЯ - переход к следующему блоку
+        function nextBlock() {
+            if (!STATE.lastFile) return;
+            
+            STATE.acceptedBlocks[STATE.currentIndex] = STATE.lastFile;
+            STATE.currentIndex++;
+            STATE.lastFile = null;
+            
+            renderBlocks();
+            updateTeleprompter();
+            
+            if (STATE.currentIndex >= STATE.blocks.length) {
+                sendMessage('merge_videos', {
+                    blocks: STATE.acceptedBlocks.filter(f => f),
+                    projectName: `Video_${Date.now()}`
+                });
+                updateStatus('Создание финального видео...', 'waiting');
+            } else {
+                updateStatus(`Блок принят! Готов к блоку ${STATE.currentIndex + 1}`, 'ready');
+            }
+            
+            updateUI();
+        }
+
+        // НОВАЯ ФУНКЦИЯ - завершение проекта
+        function finishProject() {
+            const acceptedCount = STATE.acceptedBlocks.filter(f => f).length;
+            if (acceptedCount === 0) {
+                console.log('❌ Нет принятых блоков для создания видео');
+                return;
+            }
+            
+            if (confirm(`Создать видео из ${acceptedCount} записанных блоков?\n\nОставшиеся блоки будут пропущены.`)) {
+                sendMessage('merge_videos', {
+                    blocks: STATE.acceptedBlocks.filter(f => f),
+                    projectName: `Video_${Date.now()}_partial`
+                });
+                updateStatus(`Создание видео из ${acceptedCount} блоков...`, 'waiting');
+                
+                // Сбрасываем состояние проекта
+                STATE.lastFile = null;
+                STATE.waitingForOBS = false;
+                STATE.isRecording = false;
+                showRecordingIndicator(false);
+                updateUI();
+            }
+        }
+
+        function renderBlocks() {
+            const container = document.getElementById('blocksList');
+            const currentText = document.getElementById('currentText');
+            
+            // Создаем строку состояния для сравнения
+            const currentState = JSON.stringify({
+                blocks: STATE.blocks.length,
+                currentIndex: STATE.currentIndex,
+                accepted: STATE.acceptedBlocks.length,
+                isRecording: STATE.isRecording,
+                lastFile: STATE.lastFile
+            });
+            
+            // Обновляем только если состояние изменилось
+            if (currentState === lastRenderedState) {
+                return;
+            }
+            lastRenderedState = currentState;
+            
+            if (STATE.blocks.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📝</div>
+                        <div class="empty-state-text">Блоки появятся после подготовки текста</div>
+                    </div>
+                `;
+                currentText.innerHTML = 'Добро пожаловать в Video Master!<br><br>Подключитесь к OBS Studio и загрузите текст для начала записи профессионального видео.';
+                return;
+            }
+            
+            container.innerHTML = STATE.blocks.map((block, i) => {
+                let className = 'text-block';
+                let status = '⏳ Ожидает';
+                
+                if (STATE.acceptedBlocks[i]) {
+                    className += ' completed';
+                    status = '✅ Принят';
+                } else if (i === STATE.currentIndex) {
+                    className += ' current';
+                    if (STATE.isRecording) {
+                        status = '🔴 Запись...';
+                        className += ' recording';
+                    } else if (STATE.lastFile && !STATE.waitingForOBS) {
+                        status = '⏸️ Блок записан (Z-перезапись, X-далее)';
+                    } else {
+                        status = '🎯 Текущий (Z-запись)';
+                    }
+                } else if (i < STATE.currentIndex) {
+                    status = '❌ Пропущен';
+                }
+                
+                const wordCount = block.split(/\s+/).length;
+                
+                return `
+                    <div class="${className}">
+                        <div class="block-header">
+                            <div class="block-title">Блок ${i + 1} (${wordCount} слов)</div>
+                            <div class="block-status">${status}</div>
+                        </div>
+                        <div class="block-text">${block}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateTeleprompter() {
+            const currentText = document.getElementById('currentText');
+            
+            if (STATE.currentIndex < STATE.blocks.length) {
+                currentText.textContent = STATE.blocks[STATE.currentIndex];
+            } else {
+                currentText.innerHTML = 'Все блоки записаны! 🎉<br><br>Ваше видео готово.';
+            }
+            
+            // Update recording state
+            if (STATE.isRecording) {
+                currentText.classList.add('recording');
+            } else {
+                currentText.classList.remove('recording');
+            }
+        }
+
+        // Обновленный UI для 3 кнопок (с добавлением finishBtn)
+        function updateUI() {
+            const recordBtn = document.getElementById('recordBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const finishBtn = document.getElementById('finishBtn');
+            
+            const allBlocksRecorded = STATE.currentIndex >= STATE.blocks.length;
+            
+            // Логика кнопки записи
+            if (allBlocksRecorded) {
+                recordBtn.textContent = '✅ Все блоки записаны';
+                recordBtn.disabled = true;
+            } else if (STATE.isRecording) {
+                recordBtn.textContent = '⏹️ Остановить запись (Z)';
+                recordBtn.disabled = false;
+            } else if (STATE.waitingForOBS) {
+                recordBtn.textContent = '⏳ Сохранение файла...';
+                recordBtn.disabled = true;
+            } else if (STATE.lastFile) {
+                recordBtn.textContent = '🔄 Перезаписать блок (Z)';
+                recordBtn.disabled = false;
+            } else {
+                // Проверяем готовность к записи
+                const canRecord = STATE.obsConnected && STATE.blocks.length > 0;
+                recordBtn.textContent = '🔴 Записать блок (Z)';
+                recordBtn.disabled = !canRecord;
+            }
+            
+            // Логика кнопки "Следующий блок"
+            const canProceed = STATE.lastFile && !STATE.waitingForOBS && !STATE.isRecording;
+            nextBtn.disabled = !canProceed;
+            if (canProceed) {
+                nextBtn.textContent = '➡️ Следующий блок (X)';
+            } else {
+                nextBtn.textContent = '➡️ Следующий блок';
+            }
+            
+            // Логика кнопки "Закончить проект"
+            const acceptedCount = STATE.acceptedBlocks.filter(f => f).length;
+            const canFinish = acceptedCount > 0 && !STATE.waitingForOBS;
+            finishBtn.disabled = !canFinish;
+            if (acceptedCount > 0) {
+                finishBtn.textContent = `🎬 Закончить и сохранить (${acceptedCount} блоков)`;
+            } else {
+                finishBtn.textContent = '🎬 Закончить и сохранить видео';
+            }
+            
+            // Update stats
+            document.getElementById('currentBlock').textContent = STATE.currentIndex + 1;
+            document.getElementById('totalBlocks').textContent = STATE.blocks.length;
+            document.getElementById('recordedBlocks').textContent = STATE.blocks.length - STATE.currentIndex + STATE.acceptedBlocks.filter(f => f).length;
+            document.getElementById('completedBlocks').textContent = STATE.acceptedBlocks.filter(f => f).length;
+            
+            // Update progress
+            const progress = STATE.blocks.length > 0 ? (STATE.acceptedBlocks.filter(f => f).length / STATE.blocks.length) * 100 : 0;
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressValue').textContent = Math.round(progress) + '%';
+            document.getElementById('blockCounter').textContent = `Блок ${STATE.currentIndex + 1} из ${STATE.blocks.length}`;
+            
+            // Debug
+            document.getElementById('debug').innerHTML = `
+                <strong>🔧 Состояние системы:</strong><br>
+                📡 OBS: ${STATE.obsConnected ? '<span style="color: #22c55e;">✅ Подключен</span>' : '<span style="color: #ef4444;">❌ Отключен</span>'}<br>
+                📋 Блоков загружено: <span style="color: #6366f1;">${STATE.blocks.length}</span><br>
+                🎯 Текущий блок: <span style="color: #6366f1;">${STATE.currentIndex + 1}/${STATE.blocks.length}</span><br>
+                🔴 Запись: ${STATE.isRecording ? '<span style="color: #ef4444;">🔴 ИДЕТ</span>' : '<span style="color: #22c55e;">⏹️ НЕТ</span>'}<br>
+                ⏳ Ждем OBS: ${STATE.waitingForOBS ? '<span style="color: #f59e0b;">⏳ ДА</span>' : '<span style="color: #22c55e;">✅ НЕТ</span>'}<br>
+                📁 Последний файл: <span style="color: #6366f1;">${STATE.lastFile || 'нет'}</span><br>
+                ✅ Принято блоков: <span style="color: #22c55e;">${STATE.acceptedBlocks.filter(f => f).length}/${STATE.blocks.length}</span>
+            `;
+        }
+
+        function updateStatus(text, type) {
+            const statusCard = document.getElementById('statusCard');
+            const statusText = document.getElementById('statusText');
+            
+            statusText.textContent = text;
+            
+            // Remove all status classes
+            statusCard.classList.remove('ready', 'recording', 'waiting');
+            // Add current status class
+            statusCard.classList.add(type);
+        }
+
+        function showRecordingIndicator(isRecording) {
+            const header = document.getElementById('studioHeader');
+            const recordingStatus = document.getElementById('recordingStatus');
+            
+            if (isRecording) {
+                header.classList.add('recording');
+                recordingStatus.classList.remove('hidden');
+            } else {
+                header.classList.remove('recording');
+                recordingStatus.classList.add('hidden');
+            }
+        }
+
+        // Библиотека видео с сохранением в localStorage
+        let videoLibrary = [];
+
+        function loadVideoLibrary() {
+            // Загружаем из localStorage
+            const saved = localStorage.getItem('videoMasterLibrary');
+            if (saved) {
+                try {
+                    videoLibrary = JSON.parse(saved);
+                } catch (e) {
+                    console.log('Ошибка загрузки библиотеки из localStorage');
+                    videoLibrary = [];
+                }
+            }
+            
+            // Запрашиваем список файлов с сервера
+            requestVideoList();
+            updateVideoLibrary();
+        }
+
+        function saveVideoLibrary() {
+            try {
+                localStorage.setItem('videoMasterLibrary', JSON.stringify(videoLibrary));
+            } catch (e) {
+                console.log('Ошибка сохранения библиотеки в localStorage');
+            }
+        }
+
+        function requestVideoList() {
+            sendMessage('get_video_list');
+        }
+
+        function addToVideoLibrary(filename, fileData = {}) {
+            // Проверяем, есть ли уже такой файл
+            const existingIndex = videoLibrary.findIndex(v => v.name === filename);
+            
+            const video = {
+                name: filename,
+                date: fileData.date || new Date().toLocaleString('ru-RU'),
+                size: fileData.size || 'Неизвестно',
+                fullPath: fileData.fullPath || '',
+                duration: fileData.duration || 'Неизвестно'
+            };
+            
+            if (existingIndex >= 0) {
+                // Обновляем существующий
+                videoLibrary[existingIndex] = video;
+            } else {
+                // Добавляем новый в начало
+                videoLibrary.unshift(video);
+            }
+            
+            // Ограничиваем количество записей (последние 10)
+            if (videoLibrary.length > 10) {
+                videoLibrary = videoLibrary.slice(0, 10);
+            }
+            
+            saveVideoLibrary();
+            updateVideoLibrary();
+        }
+
+        function updateVideoLibrary() {
+            const container = document.getElementById('videoLibrary');
+            
+            if (videoLibrary.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📹</div>
+                        <div class="empty-state-text">Записи появятся здесь</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = videoLibrary.slice(0, 5).map(video => `
+                <div class="video-item">
+                    <div class="video-thumbnail">MP4</div>
+                    <div class="video-info">
+                        <div class="video-name" title="${video.name}">${video.name.length > 15 ? video.name.substring(0, 15) + '...' : video.name}</div>
+                        <div class="video-date">${video.date}</div>
+                        ${video.size !== 'Неизвестно' ? `<div style="font-size: 9px; color: #9ca3af;">${video.size}</div>` : ''}
+                    </div>
+                    <div class="video-actions">
+                        <button class="btn-icon" onclick="openVideoFolder()" title="Открыть папку">
+                            📁
+                        </button>
+                        <button class="btn-icon" onclick="playVideo('${video.name}')" title="Воспроизвести">
+                            ▶️
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openVideoFolder() {
+            sendMessage('open_video_folder');
+        }
+
+        function playVideo(filename) {
+            console.log('Воспроизведение:', filename);
+        }
+
+        // НОВЫЕ горячие клавиши для 2 кнопок
+        document.addEventListener('keydown', (e) => {
+            if (e.target.matches('input, textarea')) return;
+            
+            console.log('🎮 Нажата клавиша:', e.code);
+            
+            switch(e.code) {
+                case 'KeyZ':
+                    e.preventDefault();
+                    if (!document.getElementById('recordBtn').disabled) {
+                        console.log('🎯 Выполняем recordBlock()');
+                        recordBlock();
+                    } else {
+                        console.log('⏸️ Кнопка записи заблокирована');
+                    }
+                    break;
+                case 'KeyX':
+                    e.preventDefault();
+                    if (!document.getElementById('nextBtn').disabled) {
+                        console.log('✅ Выполняем nextBlock()');
+                        nextBlock();
+                    } else {
+                        console.log('⏸️ Кнопка следующего блока заблокирована');
+                    }
+                    break;
+                // Убрали клавишу C - теперь перезапись через Z
+            }
+        });
+
+        // Запуск приложения
+        connectToServer();
+        loadVideoLibrary();
+        
+        // Обновляем UI
+        setInterval(() => {
+            updateUI();
+        }, 2000);
+    </script>
+</body>
+</html>

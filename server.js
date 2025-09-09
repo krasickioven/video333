@@ -1,497 +1,659 @@
-// server.js - Серверная часть для Google Cloud Platform
-const express = require('express');
 const WebSocket = require('ws');
-const cors = require('cors');
-const fs = require('fs').promises;
-const fsSync = require('fs');
-const path = require('path');
-const { spawn } = require('child_process');
 const OBSWebSocket = require('obs-websocket-js').default;
+const fs = require('fs');
+const path = require('path');
+const { exec, spawn } = require('child_process');
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
-
-// Состояние сервера
-const SERVER_STATE = {
-    obs: new OBSWebSocket(),
-    obsConnected: false,
-    currentSession: null,
-    videos: new Map(),
-    outputDir: process.env.OUTPUT_DIR || './videos'
-};
-
-// Создаем папку для видео если её нет
-if (!fsSync.existsSync(SERVER_STATE.outputDir)) {
-    fsSync.mkdirSync(SERVER_STATE.outputDir, { recursive: true });
-}
-
-// WebSocket сервер
-const server = require('http').createServer(app);
-const wss = new WebSocket.Server({ server });
-
-// Функция отправки сообщений всем клиентам
-function broadcast(message) {
-    const data = JSON.stringify(message);
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(data);
-        }
-    });
-}
-
-// Функция логирования
-function log(message, data = null) {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${message}`, data || '');
-}
-
-// OBS функции
-async function connectToOBS(address, password) {
-    try {
-        if (SERVER_STATE.obsConnected) {
-            await SERVER_STATE.obs.disconnect();
-        }
-
-        await SERVER_STATE.obs.connect(address, password);
-        SERVER_STATE.obsConnected = true;
+class VideoMasterServer {
+    constructor() {
+        this.port = 3001;
+        this.obsPort = 4455;
+        this.obsAddress = 'localhost';
+        this.obsPassword = '';
         
-        log('✅ OBS подключен:', address);
+        // WebSocket servers
+        this.wss = null;
+        this.clients = new Set();
         
-        broadcast({
-            type: 'obs_status',
-            data: { connected: true, address }
-        });
-
-        return { success: true };
-    } catch (error) {
-        log('❌ Ошибка подключения к OBS:', error.message);
-        SERVER_STATE.obsConnected = false;
+        // OBS connection
+        this.obs = new OBSWebSocket();
+        this.obsConnected = false;
         
-        broadcast({
-            type: 'obs_status',
-            data: { connected: false, error: error.message }
-        });
-
-        return { success: false, error: error.message };
-    }
-}
-
-async function startRecording(blockIndex, blockText) {
-    try {
-        if (!SERVER_STATE.obsConnected) {
-            throw new Error('OBS не подключен');
-        }
-
-        // Проверяем статус записи
-        const recordStatus = await SERVER_STATE.obs.call('GetRecordStatus');
-        if (recordStatus.outputActive) {
-            throw new Error('Запись уже активна в OBS');
-        }
-
-        // Генерируем имя файла
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `block_${blockIndex + 1}_${timestamp}`;
+        // Recording state
+        this.isRecording = false;
+        this.currentBlockIndex = 0;
+        this.recordingFiles = [];
+        this.projectPath = '';
+        this.currentRecordingFile = null;
+        this.lastRecordingPath = null; // Полный путь к последней записи
         
-        // Устанавливаем имя файла для записи
-        await SERVER_STATE.obs.call('SetRecordDirectory', {
-            recordDirectory: path.resolve(SERVER_STATE.outputDir)
-        });
-
-        // Начинаем запись
-        const result = await SERVER_STATE.obs.call('StartRecord');
-        
-        SERVER_STATE.currentSession = {
-            blockIndex,
-            blockText,
-            filename,
-            startTime: Date.now()
+        // Settings
+        this.settings = {
+            videoFormat: 'mp4',
+            videoQuality: 'high',
+            outputPath: this.getDefaultOutputPath()
         };
-
-        log(`🔴 Запись начата: ${filename}`);
-
-        broadcast({
-            type: 'recording_started',
-            data: {
-                filename,
-                blockIndex,
-                startTime: SERVER_STATE.currentSession.startTime
-            }
-        });
-
-        return { success: true, filename };
-    } catch (error) {
-        log('❌ Ошибка начала записи:', error.message);
         
-        broadcast({
-            type: 'error',
-            message: `Ошибка начала записи: ${error.message}`
-        });
-
-        return { success: false, error: error.message };
+        // FFmpeg path detection
+        this.ffmpegPath = this.findFFmpegPath();
+        
+        this.initializeServer();
     }
-}
 
-async function stopRecording() {
-    try {
-        if (!SERVER_STATE.obsConnected) {
-            throw new Error('OBS не подключен');
+    findFFmpegPath() {
+        // Check local ffmpeg.exe first
+        const localFFmpeg = path.join(process.cwd(), 'ffmpeg.exe');
+        if (fs.existsSync(localFFmpeg)) {
+            console.log('✅ Found local FFmpeg:', localFFmpeg);
+            return localFFmpeg;
         }
-
-        if (!SERVER_STATE.currentSession) {
-            throw new Error('Нет активной сессии записи');
-        }
-
-        // Останавливаем запись
-        const result = await SERVER_STATE.obs.call('StopRecord');
         
-        // Ждем завершения записи
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        const session = SERVER_STATE.currentSession;
-        const duration = Date.now() - session.startTime;
-
-        // Ищем созданный файл
-        const files = await fs.readdir(SERVER_STATE.outputDir);
-        const recentFile = files
-            .filter(f => f.endsWith('.mp4') || f.endsWith('.mkv'))
-            .sort((a, b) => {
-                const statA = fsSync.statSync(path.join(SERVER_STATE.outputDir, a));
-                const statB = fsSync.statSync(path.join(SERVER_STATE.outputDir, b));
-                return statB.mtime - statA.mtime;
-            })[0];
-
-        if (!recentFile) {
-            throw new Error('Не найден записанный файл');
+        // Check if ffmpeg is in PATH
+        try {
+            exec('ffmpeg -version', (error) => {
+                if (!error) {
+                    console.log('✅ FFmpeg found in system PATH');
+                } else {
+                    console.log('❌ FFmpeg not found in PATH');
+                }
+            });
+            return 'ffmpeg';
+        } catch (error) {
+            console.log('❌ FFmpeg not found anywhere');
+            return null;
         }
-
-        const filePath = path.join(SERVER_STATE.outputDir, recentFile);
-        const stats = await fs.stat(filePath);
-
-        log(`⏹️ Запись остановлена: ${recentFile}`);
-
-        broadcast({
-            type: 'recording_stopped',
-            data: {
-                filename: recentFile,
-                fullPath: filePath,
-                outputBytes: stats.size,
-                duration,
-                blockIndex: session.blockIndex
-            }
-        });
-
-        SERVER_STATE.currentSession = null;
-        return { success: true, filename: recentFile };
-    } catch (error) {
-        log('❌ Ошибка остановки записи:', error.message);
-        
-        broadcast({
-            type: 'error',
-            message: `Ошибка остановки записи: ${error.message}`
-        });
-
-        SERVER_STATE.currentSession = null;
-        return { success: false, error: error.message };
     }
-}
 
-async function mergeVideos(blocks, projectName) {
-    try {
-        const validBlocks = blocks.filter(filename => {
-            const filePath = path.join(SERVER_STATE.outputDir, filename);
-            return fsSync.existsSync(filePath);
+    initializeServer() {
+        console.log('🎬 Initializing Video Master Server...');
+        console.log('📁 Output directory:', this.settings.outputPath);
+        console.log('🔧 FFmpeg path:', this.ffmpegPath || 'NOT FOUND');
+        
+        // Create WebSocket server
+        this.wss = new WebSocket.Server({ port: this.port });
+        
+        this.wss.on('connection', (ws) => {
+            console.log('📡 Client connected');
+            this.clients.add(ws);
+            
+            ws.on('message', (message) => {
+                this.handleClientMessage(ws, JSON.parse(message));
+            });
+            
+            ws.on('close', () => {
+                console.log('📡 Client disconnected');
+                this.clients.delete(ws);
+            });
+            
+            ws.on('error', (error) => {
+                console.error('WebSocket error:', error);
+                this.clients.delete(ws);
+            });
         });
+        
+        // Setup OBS event handlers
+        this.setupOBSHandlers();
+        
+        console.log(`🚀 Video Master Server running on port ${this.port}`);
+        console.log('📋 Available commands:');
+        console.log('   - connect_obs: Connect to OBS Studio');
+        console.log('   - start_recording: Start recording a block');
+        console.log('   - stop_recording: Stop recording');
+        console.log('   - test_recording: Test 5-second recording');
+        console.log('   - merge_videos: Combine all block videos');
+    }
 
-        if (validBlocks.length === 0) {
-            throw new Error('Нет валидных видеофайлов для объединения');
-        }
-
-        const outputFilename = `${projectName}.mp4`;
-        const outputPath = path.join(SERVER_STATE.outputDir, outputFilename);
-
-        log(`🔄 Начинаем объединение ${validBlocks.length} файлов в ${outputFilename}`);
-
-        if (validBlocks.length === 1) {
-            // Если только один файл, просто копируем его
-            const sourcePath = path.join(SERVER_STATE.outputDir, validBlocks[0]);
-            await fs.copyFile(sourcePath, outputPath);
-            log(`📁 Файл скопирован: ${outputFilename}`);
-        } else {
-            // Объединяем несколько файлов с помощью FFmpeg
-            const fileListPath = path.join(SERVER_STATE.outputDir, 'filelist.txt');
-            const fileListContent = validBlocks
-                .map(filename => `file '${path.join(SERVER_STATE.outputDir, filename)}'`)
-                .join('\n');
-
-            await fs.writeFile(fileListPath, fileListContent);
-
-            await new Promise((resolve, reject) => {
-                const ffmpeg = spawn('ffmpeg', [
-                    '-f', 'concat',
-                    '-safe', '0',
-                    '-i', fileListPath,
-                    '-c', 'copy',
-                    '-y',
-                    outputPath
-                ]);
-
-                let stderr = '';
+    setupOBSHandlers() {
+        this.obs.on('ConnectionOpened', () => {
+            console.log('✅ Connected to OBS Studio');
+            this.obsConnected = true;
+            this.broadcastOBSStatus();
+        });
+        
+        this.obs.on('ConnectionClosed', () => {
+            console.log('❌ Disconnected from OBS Studio');
+            this.obsConnected = false;
+            this.broadcastOBSStatus();
+        });
+        
+        this.obs.on('RecordStateChanged', (data) => {
+            console.log('📹 Recording state changed:', {
+                outputActive: data.outputActive,
+                outputPath: data.outputPath,
+                outputBytes: data.outputBytes,
+                outputTimecode: data.outputTimecode
+            });
+            
+            if (data.outputActive) {
+                // Recording started
+                this.currentRecordingFile = path.basename(data.outputPath);
+                this.lastRecordingPath = data.outputPath;
+                this.isRecording = true;
                 
-                ffmpeg.stderr.on('data', (data) => {
-                    stderr += data.toString();
-                });
-
-                ffmpeg.on('close', (code) => {
-                    fs.unlink(fileListPath).catch(() => {});
-                    
-                    if (code === 0) {
-                        resolve();
-                    } else {
-                        reject(new Error(`FFmpeg завершился с кодом ${code}: ${stderr}`));
+                console.log('🎬 ===== ЗАПИСЬ НАЧАТА =====');
+                console.log('   📁 Файл:', this.currentRecordingFile);
+                console.log('   📂 Полный путь:', this.lastRecordingPath);
+                console.log('   🎯 Блок:', this.currentBlockIndex + 1);
+                console.log('================================');
+                
+                this.broadcastToClients({
+                    type: 'recording_started',
+                    data: { 
+                        filename: this.currentRecordingFile,
+                        fullPath: this.lastRecordingPath,
+                        blockIndex: this.currentBlockIndex
                     }
                 });
-
-                ffmpeg.on('error', reject);
-            });
-
-            log(`✅ Видео объединено: ${outputFilename}`);
-        }
-
-        const stats = await fs.stat(outputPath);
-
-        broadcast({
-            type: 'video_merged',
-            data: {
-                outputFile: outputPath,
-                filename: outputFilename,
-                fileSize: stats.size,
-                blocksUsed: validBlocks.length
+            } else {
+                // Recording stopped
+                this.isRecording = false;
+                const finalFile = this.currentRecordingFile;
+                const finalPath = this.lastRecordingPath;
+                
+                console.log('⏹️ ===== ЗАПИСЬ ОСТАНОВЛЕНА =====');
+                console.log('   📁 Файл:', finalFile);
+                console.log('   📂 Полный путь:', finalPath);
+                console.log('   🎯 Блок:', this.currentBlockIndex + 1);
+                console.log('   📊 Размер:', data.outputBytes ? `${(data.outputBytes / 1024 / 1024).toFixed(2)} MB` : 'неизвестен');
+                console.log('   ⏱️ Длительность:', data.outputTimecode || 'неизвестна');
+                
+                // Проверяем, что файл действительно создан
+                if (finalPath && require('fs').existsSync(finalPath)) {
+                    const stats = require('fs').statSync(finalPath);
+                    console.log('   ✅ Файл подтвержден, размер:', (stats.size / 1024 / 1024).toFixed(2), 'MB');
+                } else {
+                    console.log('   ❌ ВНИМАНИЕ: Файл не найден!');
+                }
+                console.log('====================================');
+                
+                this.broadcastToClients({
+                    type: 'recording_stopped',
+                    data: { 
+                        filename: finalFile,
+                        fullPath: finalPath,
+                        blockIndex: this.currentBlockIndex,
+                        outputBytes: data.outputBytes,
+                        outputTimecode: data.outputTimecode,
+                        fileExists: finalPath ? require('fs').existsSync(finalPath) : false
+                    }
+                });
+                
+                // НЕ очищаем currentRecordingFile - оставляем для принятия решения
+                // this.currentRecordingFile = null;
             }
         });
-
-        return { success: true, outputFile: outputPath };
-    } catch (error) {
-        log('❌ Ошибка объединения видео:', error.message);
         
-        broadcast({
-            type: 'error',
-            message: `Ошибка объединения видео: ${error.message}`
+        this.obs.on('ConnectionError', (error) => {
+            console.error('❌ OBS connection error:', error);
+            this.obsConnected = false;
+            this.broadcastOBSStatus(error.message);
         });
-
-        return { success: false, error: error.message };
     }
-}
 
-async function getVideoList() {
-    try {
-        const files = await fs.readdir(SERVER_STATE.outputDir);
-        const videoFiles = files.filter(f => 
-            f.endsWith('.mp4') || f.endsWith('.mkv') || f.endsWith('.avi')
-        );
-
-        const videos = await Promise.all(
-            videoFiles.map(async (filename) => {
-                const filePath = path.join(SERVER_STATE.outputDir, filename);
-                const stats = await fs.stat(filePath);
-                
-                return {
-                    name: filename,
-                    fullPath: filePath,
-                    size: `${(stats.size / 1024 / 1024).toFixed(1)} MB`,
-                    date: stats.mtime.toLocaleString('ru-RU')
-                };
-            })
-        );
-
-        videos.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        broadcast({
-            type: 'video_list',
-            data: { videos }
-        });
-
-        return videos;
-    } catch (error) {
-        log('❌ Ошибка получения списка видео:', error.message);
-        return [];
-    }
-}
-
-// WebSocket обработчики
-wss.on('connection', (ws) => {
-    log('🔗 Новое WebSocket соединение');
-
-    // Отправляем текущий статус OBS
-    ws.send(JSON.stringify({
-        type: 'obs_status',
-        data: { connected: SERVER_STATE.obsConnected }
-    }));
-
-    // Отправляем список видео
-    getVideoList();
-
-    ws.on('message', async (data) => {
+    async handleClientMessage(ws, message) {
         try {
-            const message = JSON.parse(data);
-            log(`📨 Получено сообщение: ${message.type}`);
-
+            console.log('📨 Received message:', message.type, message.data);
+            
             switch (message.type) {
                 case 'connect_obs':
-                    await connectToOBS(
-                        message.data.address || 'ws://localhost:4455',
-                        message.data.password || ''
-                    );
+                    await this.connectToOBS(message.data);
                     break;
-
+                    
                 case 'start_recording':
-                    await startRecording(
-                        message.data.blockIndex,
-                        message.data.blockText
-                    );
+                    await this.startRecording(message.data);
                     break;
-
+                    
                 case 'stop_recording':
-                    await stopRecording();
+                    await this.stopRecording();
                     break;
-
+                    
+                case 'test_recording':
+                    await this.testRecording();
+                    break;
+                    
+                case 'refresh_settings':
+                    await this.refreshOBSSettings();
+                    break;
+                    
                 case 'merge_videos':
-                    await mergeVideos(
-                        message.data.blocks,
-                        message.data.projectName
-                    );
+                    await this.mergeVideos(message.data);
                     break;
-
-                case 'get_video_list':
-                    await getVideoList();
-                    break;
-
+                    
                 case 'open_video_folder':
-                    // Для Google Cloud можно предоставить ссылку для скачивания
-                    ws.send(JSON.stringify({
-                        type: 'info',
-                        message: `Папка с видео: ${SERVER_STATE.outputDir}`
-                    }));
+                    this.openVideoFolder();
                     break;
-
+                    
                 default:
-                    log('⚠️ Неизвестный тип сообщения:', message.type);
+                    console.log('❓ Unknown message type:', message.type);
             }
         } catch (error) {
-            log('❌ Ошибка обработки сообщения:', error.message);
-            ws.send(JSON.stringify({
+            console.error('❌ Error handling message:', error);
+            this.sendToClient(ws, {
                 type: 'error',
-                message: `Ошибка сервера: ${error.message}`
-            }));
+                message: error.message
+            });
         }
-    });
-
-    ws.on('close', () => {
-        log('🔌 WebSocket соединение закрыто');
-    });
-
-    ws.on('error', (error) => {
-        log('❌ WebSocket ошибка:', error.message);
-    });
-});
-
-// REST API эндпоинты
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        obsConnected: SERVER_STATE.obsConnected,
-        outputDir: SERVER_STATE.outputDir,
-        timestamp: new Date().toISOString()
-    });
-});
-
-app.get('/videos', async (req, res) => {
-    try {
-        const videos = await getVideoList();
-        res.json({ videos });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
     }
-});
 
-app.get('/videos/:filename', (req, res) => {
-    try {
-        const filename = req.params.filename;
-        const filePath = path.join(SERVER_STATE.outputDir, filename);
+    async connectToOBS(data) {
+        try {
+            this.obsAddress = data.address.replace('ws://', '').replace('wss://', '');
+            this.obsPassword = data.password;
+            
+            const [host, port] = this.obsAddress.split(':');
+            
+            console.log(`🔗 Connecting to OBS at ${host}:${port || 4455}...`);
+            
+            await this.obs.connect(`ws://${host}:${port || 4455}`, this.obsPassword);
+            
+        } catch (error) {
+            console.error('❌ Failed to connect to OBS:', error);
+            this.obsConnected = false;
+            this.broadcastOBSStatus(error.message);
+        }
+    }
+
+    async refreshOBSSettings() {
+        if (!this.obsConnected) {
+            throw new Error('OBS not connected');
+        }
         
-        if (!fsSync.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Файл не найден' });
-        }
-
-        res.download(filePath);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Обработчики OBS событий
-SERVER_STATE.obs.on('ConnectionClosed', () => {
-    log('🔌 OBS соединение закрыто');
-    SERVER_STATE.obsConnected = false;
-    broadcast({
-        type: 'obs_status',
-        data: { connected: false }
-    });
-});
-
-SERVER_STATE.obs.on('ConnectionError', (error) => {
-    log('❌ OBS ошибка соединения:', error.message);
-    SERVER_STATE.obsConnected = false;
-    broadcast({
-        type: 'obs_status',
-        data: { connected: false, error: error.message }
-    });
-});
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-    log('🛑 Получен SIGTERM, завершаем работу...');
-    
-    if (SERVER_STATE.obsConnected) {
         try {
-            await SERVER_STATE.obs.disconnect();
+            // Get scenes
+            const scenesResponse = await this.obs.call('GetSceneList');
+            const scenes = scenesResponse.scenes.map(scene => scene.sceneName);
+            const currentScene = scenesResponse.currentProgramSceneName;
+            
+            // Get audio sources
+            const inputsResponse = await this.obs.call('GetInputList');
+            const audioSources = inputsResponse.inputs
+                .filter(input => input.inputKind.includes('audio'))
+                .map(input => input.inputName);
+            
+            // Get recording settings
+            const recordResponse = await this.obs.call('GetRecordDirectory');
+            const recordingPath = recordResponse.recordDirectory;
+            
+            this.broadcastOBSStatus(null, {
+                scenes,
+                currentScene,
+                audioSources,
+                recordingPath
+            });
+            
         } catch (error) {
-            log('❌ Ошибка отключения от OBS:', error.message);
+            console.error('❌ Error refreshing OBS settings:', error);
+            throw error;
         }
     }
-    
-    server.close(() => {
-        log('✅ Сервер остановлен');
-        process.exit(0);
-    });
-});
 
+    async startRecording(data) {
+        if (!this.obsConnected) {
+            throw new Error('OBS not connected');
+        }
+        
+        try {
+            this.currentBlockIndex = data.blockIndex;
+            
+            console.log(`🎬 Starting recording for block ${this.currentBlockIndex + 1}:`);
+            console.log('   Block text:', data.blockText?.substring(0, 100) + '...');
+            
+            // Set recording directory
+            await this.obs.call('SetRecordDirectory', {
+                recordDirectory: this.settings.outputPath
+            });
+            
+            // Start recording
+            await this.obs.call('StartRecord');
+            
+            console.log(`✅ Recording command sent for block ${this.currentBlockIndex + 1}`);
+            
+        } catch (error) {
+            console.error('❌ Error starting recording:', error);
+            throw error;
+        }
+    }
+
+    async stopRecording() {
+        if (!this.obsConnected) {
+            console.log('⚠️ OBS not connected, cannot stop recording');
+            return;
+        }
+        
+        try {
+            console.log(`⏹️ Stopping recording for block ${this.currentBlockIndex + 1}...`);
+            
+            await this.obs.call('StopRecord');
+            
+            console.log(`✅ Stop recording command sent for block ${this.currentBlockIndex + 1}`);
+            
+        } catch (error) {
+            console.error('❌ Error stopping recording:', error);
+            throw error;
+        }
+    }
+
+    async testRecording() {
+        if (!this.obsConnected) {
+            throw new Error('OBS not connected');
+        }
+        
+        try {
+            console.log('🧪 Starting test recording for 5 seconds...');
+            
+            await this.obs.call('StartRecord');
+            
+            setTimeout(async () => {
+                try {
+                    await this.obs.call('StopRecord');
+                    console.log('✅ Test recording completed');
+                } catch (error) {
+                    console.error('❌ Error stopping test recording:', error);
+                }
+            }, 5000);
+            
+        } catch (error) {
+            console.error('❌ Error starting test recording:', error);
+            throw error;
+        }
+    }
+
+    async mergeVideos(data) {
+        const { blocks, projectName } = data;
+        
+        console.log('🔧 ===== НАЧАЛО СКЛЕЙКИ =====');
+        console.log('📋 Блоки для склейки:', blocks);
+        console.log('📄 Имя проекта:', projectName);
+        console.log('🗂️ Папка вывода:', this.settings.outputPath);
+        
+        if (!this.ffmpegPath) {
+            throw new Error('FFmpeg not found. Please install FFmpeg or place ffmpeg.exe in the project folder.');
+        }
+        
+        // Filter out empty blocks and check if files exist
+        const videoDir = this.settings.outputPath;
+        const validBlocks = blocks.filter(block => {
+            if (!block || block.includes('[отклонен]')) {
+                console.log(`❌ Пропускаем недействительный блок: ${block}`);
+                return false;
+            }
+            const filePath = path.join(videoDir, block);
+            const exists = fs.existsSync(filePath);
+            console.log(`📁 Проверка ${block}: ${exists ? '✅ найден' : '❌ не найден'}`);
+            if (exists) {
+                const stats = fs.statSync(filePath);
+                console.log(`   Размер: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+            }
+            return exists;
+        });
+        
+        if (validBlocks.length === 0) {
+            console.log('📁 Содержимое папки с видео:');
+            try {
+                const files = fs.readdirSync(videoDir);
+                files.forEach(file => {
+                    const filePath = path.join(videoDir, file);
+                    if (fs.existsSync(filePath)) {
+                        const stats = fs.statSync(filePath);
+                        console.log(`   📄 ${file} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+                    }
+                });
+            } catch (error) {
+                console.log('❌ Не удалось прочитать папку с видео');
+            }
+            throw new Error('Нет действительных видеофайлов для склейки');
+        }
+        
+        console.log(`✅ Найдено ${validBlocks.length} действительных блоков для склейки`);
+        
+        try {
+            const outputFile = path.join(videoDir, `${projectName}.mp4`);
+            console.log('🎯 Финальный файл:', outputFile);
+            
+            if (validBlocks.length === 1) {
+                // Single file, just copy
+                const inputFile = path.join(videoDir, validBlocks[0]);
+                console.log('📋 Обнаружен единственный файл, копируем вместо склейки...');
+                fs.copyFileSync(inputFile, outputFile);
+                console.log('✅ Единственный видеофайл скопирован успешно');
+            } else {
+                // Multiple files, merge with FFmpeg
+                console.log(`🔧 Склейка ${validBlocks.length} файлов с помощью FFmpeg...`);
+                await this.mergeWithFFmpeg(validBlocks, outputFile);
+            }
+            
+            // Check if output file was created successfully
+            if (fs.existsSync(outputFile)) {
+                const stats = fs.statSync(outputFile);
+                console.log('🎉 ===== СКЛЕЙКА ЗАВЕРШЕНА =====');
+                console.log(`✅ Финальное видео создано: ${outputFile}`);
+                console.log(`📊 Размер: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+                console.log(`🧩 Блоков склеено: ${validBlocks.length}`);
+                console.log('===============================');
+                
+                this.broadcastToClients({
+                    type: 'video_merged',
+                    data: { 
+                        outputFile,
+                        fileSize: stats.size,
+                        blocksCount: validBlocks.length,
+                        outputPath: this.settings.outputPath
+                    }
+                });
+                
+                // Автоматически открываем папку
+                this.openVideoFolder();
+                
+            } else {
+                throw new Error('Выходной файл не был создан');
+            }
+            
+        } catch (error) {
+            console.error('❌ Ошибка склейки видео:', error);
+            
+            // Try alternative merge method
+            console.log('🔄 Попытка альтернативного метода склейки...');
+            try {
+                const altOutputFile = path.join(videoDir, `${projectName}_alt.mp4`);
+                await this.mergeVideosAlternative(validBlocks, altOutputFile);
+                
+                if (fs.existsSync(altOutputFile)) {
+                    const stats = fs.statSync(altOutputFile);
+                    console.log(`✅ Альтернативная склейка успешна: ${altOutputFile}`);
+                    console.log(`   Размер: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+                    
+                    this.broadcastToClients({
+                        type: 'video_merged',
+                        data: { 
+                            outputFile: altOutputFile,
+                            fileSize: stats.size,
+                            blocksCount: validBlocks.length,
+                            method: 'alternative',
+                            outputPath: this.settings.outputPath
+                        }
+                    });
+                    
+                    // Автоматически открываем папку
+                    this.openVideoFolder();
+                    
+                } else {
+                    throw new Error('Альтернативная склейка также не смогла создать выходной файл');
+                }
+            } catch (altError) {
+                console.error('❌ Альтернативная склейка также не удалась:', altError);
+                throw new Error(`Склейка не удалась: ${error.message}. Альтернативный метод также не сработал: ${altError.message}`);
+            }
+        }
+    }
+
+    async mergeWithFFmpeg(videoFiles, outputFile) {
+        return new Promise((resolve, reject) => {
+            const videoDir = this.settings.outputPath;
+            
+            // Create file list for FFmpeg (with proper Windows path escaping)
+            const listFile = path.join(videoDir, 'filelist.txt');
+            const fileList = videoFiles.map(file => {
+                const fullPath = path.join(videoDir, file);
+                // Convert Windows paths to forward slashes for FFmpeg
+                const ffmpegPath = fullPath.replace(/\\/g, '/');
+                return `file '${ffmpegPath}'`;
+            }).join('\n');
+            
+            console.log('📝 Creating filelist.txt:');
+            console.log(fileList);
+            
+            fs.writeFileSync(listFile, fileList, 'utf8');
+            
+            // Build FFmpeg command with proper quoting
+            const ffmpegCmd = `"${this.ffmpegPath}" -f concat -safe 0 -i "${listFile}" -c copy "${outputFile}"`;
+            
+            console.log('🎬 Running FFmpeg command:');
+            console.log(ffmpegCmd);
+            
+            exec(ffmpegCmd, (error, stdout, stderr) => {
+                // Clean up temp file
+                try {
+                    fs.unlinkSync(listFile);
+                    console.log('🗑️ Cleaned up temporary filelist.txt');
+                } catch (cleanupError) {
+                    console.log('⚠️ Could not delete temp file:', cleanupError.message);
+                }
+                
+                if (error) {
+                    console.error('❌ FFmpeg error:', error.message);
+                    console.error('📋 FFmpeg stderr:', stderr);
+                    reject(new Error(`FFmpeg failed: ${error.message}`));
+                } else {
+                    console.log('✅ Videos merged successfully with concat method');
+                    if (stdout) console.log('📋 FFmpeg stdout:', stdout);
+                    resolve();
+                }
+            });
+        });
+    }
+
+    async mergeVideosAlternative(videoFiles, outputFile) {
+        return new Promise((resolve, reject) => {
+            const videoDir = this.settings.outputPath;
+            
+            // Alternative method: using filter_complex
+            const inputs = videoFiles.map((file, index) => {
+                const fullPath = path.join(videoDir, file);
+                return `-i "${fullPath}"`;
+            }).join(' ');
+            
+            const filterComplex = videoFiles.map((_, index) => `[${index}:v][${index}:a]`).join('') + 
+                                 `concat=n=${videoFiles.length}:v=1:a=1[outv][outa]`;
+            
+            const ffmpegCmd = `"${this.ffmpegPath}" ${inputs} -filter_complex "${filterComplex}" -map "[outv]" -map "[outa]" "${outputFile}"`;
+            
+            console.log('🔄 Running alternative FFmpeg command (filter_complex):');
+            console.log(ffmpegCmd);
+            
+            exec(ffmpegCmd, (error, stdout, stderr) => {
+                if (error) {
+                    console.error('❌ Alternative FFmpeg error:', error.message);
+                    console.error('📋 Alternative FFmpeg stderr:', stderr);
+                    reject(new Error(`Alternative FFmpeg failed: ${error.message}`));
+                } else {
+                    console.log('✅ Videos merged successfully with filter_complex method');
+                    if (stdout) console.log('📋 Alternative FFmpeg stdout:', stdout);
+                    resolve();
+                }
+            });
+        });
+    }
+
+    openVideoFolder() {
+        const platform = process.platform;
+        let command;
+        
+        switch (platform) {
+            case 'win32':
+                command = `explorer "${this.settings.outputPath}"`;
+                break;
+            case 'darwin':
+                command = `open "${this.settings.outputPath}"`;
+                break;
+            case 'linux':
+                command = `xdg-open "${this.settings.outputPath}"`;
+                break;
+            default:
+                console.log('📁 Video folder:', this.settings.outputPath);
+                return;
+        }
+        
+        exec(command, (error) => {
+            if (error) {
+                console.error('❌ Error opening folder:', error);
+            } else {
+                console.log('📁 Opened video folder');
+            }
+        });
+    }
+
+    broadcastOBSStatus(error = null, additionalData = {}) {
+        const statusData = {
+            connected: this.obsConnected,
+            error: error,
+            ...additionalData
+        };
+        
+        this.broadcastToClients({
+            type: 'obs_status',
+            data: statusData
+        });
+    }
+
+    broadcastToClients(message) {
+        const messageStr = JSON.stringify(message);
+        this.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(messageStr);
+            }
+        });
+    }
+
+    sendToClient(client, message) {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(message));
+        }
+    }
+
+    getDefaultOutputPath() {
+        const os = require('os');
+        const defaultPath = path.join(os.homedir(), 'Videos', 'VideoMaster');
+        
+        // Create directory if it doesn't exist
+        if (!fs.existsSync(defaultPath)) {
+            fs.mkdirSync(defaultPath, { recursive: true });
+            console.log('📁 Created video directory:', defaultPath);
+        }
+        
+        return defaultPath;
+    }
+}
+
+// Start server
+const server = new VideoMasterServer();
+
+// Handle graceful shutdown
 process.on('SIGINT', async () => {
-    log('🛑 Получен SIGINT, завершаем работу...');
+    console.log('\n🛑 Shutting down Video Master Server...');
     
-    if (SERVER_STATE.obsConnected) {
+    if (server.obsConnected) {
         try {
-            await SERVER_STATE.obs.disconnect();
+            await server.obs.disconnect();
         } catch (error) {
-            log('❌ Ошибка отключения от OBS:', error.message);
+            console.error('❌ Error disconnecting from OBS:', error);
         }
     }
     
-    server.close(() => {
-        log('✅ Сервер остановлен');
-        process.exit(0);
-    });
+    if (server.wss) {
+        server.wss.close();
+    }
+    
+    process.exit(0);
 });
 
-// Запуск сервера
-server.listen(PORT, () => {
-    log(`🚀 Сервер запущен на порту ${PORT}`);
-    log(`📁 Папка для видео: ${SERVER_STATE.outputDir}`);
-    log(`🌐 Health check: http://localhost:${PORT}/health`);
-});
-
-module.exports = app;
+module.exports = VideoMasterServer;
